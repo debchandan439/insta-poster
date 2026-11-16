@@ -1,0 +1,17 @@
+[
+  {
+    "image": "images/post1.jpg",
+    "caption": "Welcome to our page! 🎉 Follow along for daily updates.\n\n#smallbusiness #supportlocal",
+    "posted": false
+  },
+  {
+    "image": "images/post2.jpg",
+    "caption": "Meet our best seller 👀 Tap the link in bio to order.\n\n#bestseller #newarrival",
+    "posted": false
+  },
+  {
+    "image": "images/post3.jpg",
+    "caption": "Customer love ❤️ Thank you for trusting us!\n\n#happycustomers #testimonial",
+    "posted": false
+  }
+]
