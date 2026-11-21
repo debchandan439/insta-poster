@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 import traceback
-from . import adimage, captioner, config as C, ghub, reelmaker
+from . import adimage, captioner, config as C, ghub, reelmaker, videoprep
 
 
 def _slug(name):
@@ -12,12 +12,49 @@ def _slug(name):
     return datetime.datetime.utcnow().strftime("%Y%m%d-%H%M%S-") + base
 
 
+def _prepare_video(video):
+    slug = _slug(video.name)
+    d = C.QUEUE / slug
+    d.mkdir(parents=True)
+    try:
+        videoprep.normalize(video, d / "reel.mp4")
+        times = videoprep.frame_times(d / "reel.mp4")
+        tmp = d / "_frames"
+        tmp.mkdir()
+        frames = []
+        for i, t in enumerate(times):
+            f = tmp / f"{i}.jpg"
+            videoprep.grab(d / "reel.mp4", t, f, width=540)
+            frames.append(f)
+        category, title, caption, note, best = captioner.generate_frames(frames)
+        if best is None:
+            best = videoprep.sharpest(frames)
+            note = (note + " " if note else "") + "AI could not pick the cover, so the sharpest frame was used."
+        videoprep.grab(d / "reel.mp4", times[best], d / "cover.jpg")
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.move(str(video), str(d / ("original" + video.suffix.lower())))
+        (d / "caption.txt").write_text(caption, encoding="utf-8")
+        ghub.save(slug, {"slug": slug, "kind": "video", "status": "pending", "issue": 0,
+                         "category": category, "title": title, "note": note, "caption": caption})
+        print("prepared video", slug)
+        return slug
+    except Exception:
+        traceback.print_exc()
+        shutil.rmtree(d, ignore_errors=True)
+        return None
+
+
 def prepare_all():
     photos = [p for p in sorted(C.INCOMING.glob("*")) if p.suffix.lower() in C.IMAGE_EXTS]
-    if not photos:
+    videos = [p for p in sorted(C.INCOMING.glob("*")) if p.suffix.lower() in C.VIDEO_EXTS]
+    if not photos and not videos:
         print("incoming/ is empty, nothing to prepare")
         return
     created = []
+    for v in videos:
+        s = _prepare_video(v)
+        if s:
+            created.append(s)
     for photo in photos:
         slug = None
         try:
@@ -46,9 +83,14 @@ def prepare_all():
     for slug in created:
         m = ghub.load(slug)
         base = f"https://raw.githubusercontent.com/{ghub.repo()}/main/queue/{slug}"
+        pic = "cover" if m.get("kind") == "video" else "ad"
+        pic_url = f"{base}/{'cover' if pic == 'cover' else 'ad'}.jpg"
+        label = "থামবনেইল (কভার)" if pic == "cover" else "বিজ্ঞাপনের ছবি"
         body = f"""@{owner} নতুন পোস্ট তৈরি। দেখে সিদ্ধান্ত জানান.
 
-![ad]({base}/ad.jpg)
+**{label}:**
+
+![{pic}]({pic_url})
 
 **Reel (ভিডিও):** [দেখুন]({base}/reel.mp4)
 

@@ -45,10 +45,21 @@ def _jpeg_b64(path):
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def _ask(model, key, b64):
+VIDEO_NOTE = """
+The images are {n} frames taken in order from one short video (numbered 0 to {last}).
+Write the caption for the whole video. Also add a JSON field "best_frame": the number of the single
+frame that makes the best cover picture (product clearly visible, sharp, well lit, nice composition,
+not blurred, not mid-transition). Answer ONLY with JSON: {{"category": "...", "title_en": "...", "caption": "...", "best_frame": 0}}
+"""
+
+
+def _ask(model, key, b64s, video=False):
+    prompt = PROMPT.format(brand=C.BRAND, today=datetime.date.today().isoformat())
+    if video:
+        prompt += VIDEO_NOTE.format(n=len(b64s), last=len(b64s) - 1)
+    parts = [{"text": prompt}] + [{"inline_data": {"mime_type": "image/jpeg", "data": b}} for b in b64s]
     body = {
-        "contents": [{"parts": [{"text": PROMPT.format(brand=C.BRAND, today=datetime.date.today().isoformat())},
-                                {"inline_data": {"mime_type": "image/jpeg", "data": b64}}]}],
+        "contents": [{"parts": parts}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.7},
     }
     req = urllib.request.Request(
@@ -68,24 +79,32 @@ def clean(caption):
 
 def generate(image_path):
     """Returns (category, title, caption, note). note explains any fallback."""
+    cat, title, cap, note, _ = generate_frames([image_path], video=False)
+    return cat, title, cap, note
+
+
+def generate_frames(paths, video=True):
+    """Returns (category, title, caption, note, best_frame or None)."""
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
         t = FALLBACK["other"]
-        return "other", t[0], t[1], "GEMINI_API_KEY secret missing, so a plain template caption was used."
+        return "other", t[0], t[1], "GEMINI_API_KEY secret missing, so a plain template caption was used.", None
     models = ([os.environ["GEMINI_MODEL"]] if os.environ.get("GEMINI_MODEL") else []) + C.GEMINI_MODELS
-    b64, errors = _jpeg_b64(image_path), []
+    b64s, errors = [_jpeg_b64(p) for p in paths], []
     for m in models:
         try:
-            out = _ask(m, key, b64)
+            out = _ask(m, key, b64s, video)
             cat = out.get("category", "other")
             cat = cat if cat in FALLBACK else "other"
             cap = clean(out["caption"])
             if f"#{C.BRAND}".lower() not in cap.lower():
                 cap += f"\n\n#{C.BRAND}"
-            return cat, str(out.get("title_en", ""))[:40], cap, ""
+            best = out.get("best_frame")
+            best = best if isinstance(best, int) and 0 <= best < len(paths) else None
+            return cat, str(out.get("title_en", ""))[:40], cap, "", best
         except urllib.error.HTTPError as e:
             errors.append(f"{m}: HTTP {e.code}")
         except Exception as e:  # noqa
             errors.append(f"{m}: {type(e).__name__}")
     t = FALLBACK["other"]
-    return "other", t[0], t[1], "AI caption failed (" + "; ".join(errors) + "), so a plain template caption was used. Please edit it."
+    return "other", t[0], t[1], "AI caption failed (" + "; ".join(errors) + "), so a plain template caption was used. Please edit it.", None

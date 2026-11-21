@@ -7,8 +7,13 @@ def publish_slug(slug):
     base = f"https://raw.githubusercontent.com/{ghub.repo()}/main/queue/{slug}"
     caption = (C.QUEUE / slug / "caption.txt").read_text(encoding="utf-8")
     ok, problems = [], []
-    for kind, url, fn in (("ছবি", f"{base}/ad.jpg", instagram.publish_image),
-                          ("Reel", f"{base}/reel.mp4", instagram.publish_reel)):
+    if m.get("kind") == "video":   # own video: Reel only, with the chosen cover picture
+        jobs = (("Reel", f"{base}/reel.mp4",
+                 lambda u, c: instagram.publish_reel(u, c, cover_url=f"{base}/cover.jpg")),)
+    else:
+        jobs = (("ছবি", f"{base}/ad.jpg", instagram.publish_image),
+                ("Reel", f"{base}/reel.mp4", instagram.publish_reel))
+    for kind, url, fn in jobs:
         try:
             if C.DRY_RUN:
                 print("[dry-run] would post", kind, url)

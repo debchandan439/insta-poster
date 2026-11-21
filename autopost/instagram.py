@@ -48,9 +48,10 @@ def publish_image(image_url, caption):
     return _publish(c)
 
 
-def publish_reel(video_url, caption):
+def publish_reel(video_url, caption, cover_url=None):
+    extra = {"cover_url": cover_url} if cover_url else {}
     c = _call("POST", f"{os.environ['IG_USER_ID']}/media", media_type="REELS",
-              video_url=video_url, caption=caption, share_to_feed="true")["id"]
+              video_url=video_url, caption=caption, share_to_feed="true", **extra)["id"]
     _wait(c, 72, 5)
     return _publish(c)
 

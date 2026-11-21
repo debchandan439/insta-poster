@@ -18,3 +18,5 @@ GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-3.6-f
 
 DRY_RUN = os.environ.get("DRY_RUN") == "1"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
+MAX_REEL_SECONDS = 90
