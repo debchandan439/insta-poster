@@ -1,5 +1,5 @@
 """Posts approved items (picture first, then the Reel)."""
-from . import config as C, ghub, instagram
+from . import config as C, facebook, ghub, instagram
 
 
 def publish_slug(slug):
@@ -13,6 +13,8 @@ def publish_slug(slug):
     else:
         jobs = (("ছবি", f"{base}/ad.jpg", instagram.publish_image),
                 ("Reel", f"{base}/reel.mp4", instagram.publish_reel))
+    fb_notes = []
+    fb_fn = {"ছবি": facebook.post_photo, "Reel": facebook.post_reel}
     for kind, url, fn in jobs:
         try:
             if C.DRY_RUN:
@@ -24,6 +26,13 @@ def publish_slug(slug):
             ok.append(kind)
         except Exception as e:  # noqa
             problems.append(f"{kind}: {e}")
+            continue
+        if facebook.enabled() and not C.DRY_RUN:   # Facebook trouble never blocks Instagram
+            try:
+                fb_fn[kind](url, caption)
+                fb_notes.append(f"Facebook {kind} ✅")
+            except Exception as e:  # noqa
+                fb_notes.append(f"Facebook {kind} ❌ {str(e)[:300]}")
     if not ok:
         m["status"] = "failed"
         ghub.save(slug, m)
@@ -32,7 +41,9 @@ def publish_slug(slug):
         return False
     m["status"] = "posted"
     ghub.save(slug, m)
-    msg = "✅ পোস্ট হয়েছে: " + ", ".join(ok)
+    msg = "✅ Instagram-এ পোস্ট হয়েছে: " + ", ".join(ok)
+    if fb_notes:
+        msg += "\n\n" + "\n".join(fb_notes)
     if problems:
         msg += "\n\n⚠️ কিন্তু এটা হয়নি:\n```\n" + "\n".join(problems) + "\n```"
     ghub.comment(m.get("issue"), msg)
