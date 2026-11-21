@@ -8,9 +8,9 @@ INCOMING = ROOT / "incoming"
 QUEUE = ROOT / "queue"
 
 BRAND = "BhaktiBox"
-AD_LINE_1 = "ALL ARE HANDMADE"
-AD_LINE_2 = "सब कुछ हाथ से बना"
-AD_BUTTON = "DM ME FOR PRICE"
+AD_LINE_1 = "MADE BY HAND, MADE WITH BHAKTI"
+AD_LINE_2 = "आपकी पूजा के लिए, प्यार से बना"
+AD_BUTTON = "DM "HI" TO ORDER"
 
 # Models are tried in this order until one works (Google renames models often).
 # To force one, add a GitHub variable/secret GEMINI_MODEL.
