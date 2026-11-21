@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 import traceback
-from . import adimage, captioner, config as C, ghub, reelmaker, videoprep
+from . import adimage, billboard, poster, captioner, config as C, ghub, reelmaker, videoprep
 
 
 def _slug(name):
@@ -63,13 +63,19 @@ def prepare_all():
             d.mkdir(parents=True)
             category, title, caption, note = captioner.generate(photo)
             show_title = title if category in ("diya", "dhunuchi", "other") else ""
-            ph, band, full = adimage.build(photo, show_title)
+            if C.AD_STYLE == "billboard":
+                ph, band, full = billboard.build(photo, captioner.LAST.get("headline", ""), captioner.LAST.get("subline", ""))
+            elif C.AD_STYLE == "poster":
+                ph, band, full = poster.build(photo, captioner.LAST.get("headline", ""), captioner.LAST.get("subline", ""))
+            else:
+                ph, band, full = adimage.build(photo, show_title)
             full.save(d / "ad.jpg", quality=93)
             reelmaker.make(ph, band, d / "reel.mp4")
             shutil.move(str(photo), str(d / ("original" + photo.suffix.lower())))
             (d / "caption.txt").write_text(caption, encoding="utf-8")
             ghub.save(slug, {"slug": slug, "status": "pending", "issue": 0, "category": category,
-                             "title": title, "note": note, "caption": caption})
+                             "title": title, "note": note, "caption": caption,
+                             "headline": captioner.LAST.get("headline", "")})
             created.append(slug)
             print("prepared", slug, category)
         except Exception:

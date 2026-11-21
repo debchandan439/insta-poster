@@ -12,7 +12,14 @@ from . import config as C
 
 PROMPT = """You write Instagram posts for {brand}, a small Indian shop that sells handmade puja items:
 Laddu Gopal / Radha Rani dresses (poshak), mitti (clay) diyas and mitti dhunuchi.
-Look at the product photo and answer ONLY with JSON: {{"category": "...", "title_en": "...", "caption": "..."}}
+Look at the product photo and answer ONLY with JSON:
+{{"category": "...", "title_en": "...", "headline": "...", "subline": "...", "caption": "..."}}
+
+headline: ONE witty poster line in Hinglish (Hindi written in English letters), 3-7 words, like Indian brand
+  billboards (Blinkit, Swiggy, Zomato): everyday language, wordplay, rhyme or a cheeky twist that fits the product
+  and the season. Original, not a copy of any brand's line. No price, discount, offer or delivery promise.
+  Examples of the style only: "Roshni wahi, jo haath se bani." / "Dhak bajao, dhunuchi jalao."
+subline: 4-8 words in simple English or Hinglish saying what the product is, e.g. "Handmade mitti diye for your puja".
 
 category: one of dress, diya, dhunuchi, other.
 title_en: 2-4 English words naming the product, e.g. "Handmade Mitti Diya Set".
@@ -49,7 +56,7 @@ VIDEO_NOTE = """
 The images are {n} frames taken in order from one short video (numbered 0 to {last}).
 Write the caption for the whole video. Also add a JSON field "best_frame": the number of the single
 frame that makes the best cover picture (product clearly visible, sharp, well lit, nice composition,
-not blurred, not mid-transition). Answer ONLY with JSON: {{"category": "...", "title_en": "...", "caption": "...", "best_frame": 0}}
+not blurred, not mid-transition). Answer ONLY with JSON: {{"category": "...", "title_en": "...", "headline": "...", "subline": "...", "caption": "...", "best_frame": 0}}
 """
 
 
@@ -72,6 +79,15 @@ def _ask(model, key, b64s, video=False):
     return json.loads(text)
 
 
+HEADLINES = {
+    "dress": ("Kanha ji ka look, ekdum perfect.", "Handmade poshak for Laddu Gopal"),
+    "diya": ("Roshni wahi, jo haath se bani.", "Handmade mitti diye for your puja"),
+    "dhunuchi": ("Dhak bajao, dhunuchi jalao.", "Handmade mitti dhunuchi for your aarti"),
+    "other": ("Pooja ki taiyari, haath se bani.", "Handmade with love by BhaktiBox"),
+}
+LAST = {}   # headline/subline of the most recent generate() call
+
+
 def clean(caption):
     caption = caption.replace("**", "").replace("__", "").strip()
     return re.sub(r"\n{3,}", "\n\n", caption)[:2100]
@@ -85,9 +101,11 @@ def generate(image_path):
 
 def generate_frames(paths, video=True):
     """Returns (category, title, caption, note, best_frame or None)."""
+    LAST.clear()
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
         t = FALLBACK["other"]
+        LAST.update(headline=HEADLINES["other"][0], subline=HEADLINES["other"][1])
         return "other", t[0], t[1], "GEMINI_API_KEY secret missing, so a plain template caption was used.", None
     models = ([os.environ["GEMINI_MODEL"]] if os.environ.get("GEMINI_MODEL") else []) + C.GEMINI_MODELS
     b64s, errors = [_jpeg_b64(p) for p in paths], []
@@ -99,6 +117,9 @@ def generate_frames(paths, video=True):
             cap = clean(out["caption"])
             if f"#{C.BRAND}".lower() not in cap.lower():
                 cap += f"\n\n#{C.BRAND}"
+            hd = HEADLINES[cat]
+            LAST["headline"] = (str(out.get("headline") or "").strip()[:60]) or hd[0]
+            LAST["subline"] = (str(out.get("subline") or "").strip()[:60]) or hd[1]
             best = out.get("best_frame")
             best = best if isinstance(best, int) and 0 <= best < len(paths) else None
             return cat, str(out.get("title_en", ""))[:40], cap, "", best
@@ -107,4 +128,5 @@ def generate_frames(paths, video=True):
         except Exception as e:  # noqa
             errors.append(f"{m}: {type(e).__name__}")
     t = FALLBACK["other"]
+    LAST.update(headline=HEADLINES["other"][0], subline=HEADLINES["other"][1])
     return "other", t[0], t[1], "AI caption failed (" + "; ".join(errors) + "), so a plain template caption was used. Please edit it.", None

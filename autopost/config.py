@@ -8,9 +8,9 @@ INCOMING = ROOT / "incoming"
 QUEUE = ROOT / "queue"
 
 BRAND = "BhaktiBox"
-AD_LINE_1 = "MADE BY HAND, MADE WITH BHAKTI"
-AD_LINE_2 = "आपकी पूजा के लिए, प्यार से बना"
-AD_BUTTON = "DM "HI" TO ORDER"
+AD_LINE_1 = "ALL ARE HANDMADE"
+AD_LINE_2 = "सब कुछ हाथ से बना"
+AD_BUTTON = "DM ME FOR PRICE"
 
 # Models are tried in this order until one works (Google renames models often).
 # To force one, add a GitHub variable/secret GEMINI_MODEL.
@@ -20,3 +20,4 @@ DRY_RUN = os.environ.get("DRY_RUN") == "1"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
 MAX_REEL_SECONDS = 90
+AD_STYLE = "poster"   # "billboard" = poster shown inside a street billboard photo, "poster" = flat poster, "classic" = photo + brand band
