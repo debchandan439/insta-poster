@@ -20,4 +20,4 @@ DRY_RUN = os.environ.get("DRY_RUN") == "1"
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm"}
 MAX_REEL_SECONDS = 90
-AD_STYLE = "poster"   # "billboard" = poster shown inside a street billboard photo, "poster" = flat poster, "classic" = photo + brand band
+AD_STYLE = "billboard"   # "billboard" = poster shown inside a street billboard photo, "poster" = flat poster, "classic" = photo + brand band
