@@ -29,11 +29,12 @@ def _call(method, path, **params):
 
 def _wait(container, tries, delay):
     for _ in range(tries):
-        st = _call("GET", container, fields="status_code,status").get("status_code")
+        info = _call("GET", container, fields="status_code,status")
+        st = info.get("status_code")
         if st == "FINISHED":
             return
         if st in ("ERROR", "EXPIRED"):
-            raise IGError(f"Instagram could not process the file ({st})")
+            raise IGError(f"Instagram could not process the file ({st}) {info.get('status', '')}")
         time.sleep(delay)
     raise IGError("Instagram took too long to process the file")
 

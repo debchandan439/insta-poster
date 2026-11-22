@@ -1,5 +1,18 @@
 """Posts approved items (picture first, then the Reel)."""
+import os
+import re
+import time
 from . import config as C, facebook, ghub, instagram
+
+
+def _scrub(text):
+    """Never let a token appear in an issue comment (the repository is public)."""
+    text = re.sub(r"EAA[A-Za-z0-9_-]{20,}", "[token hidden]", str(text))
+    for name in ("IG_ACCESS_TOKEN", "FB_PAGE_TOKEN", "GEMINI_API_KEY"):
+        v = os.environ.get(name, "")
+        if len(v) > 12:
+            text = text.replace(v, "[secret hidden]")
+    return text
 
 
 def publish_slug(slug):
@@ -22,17 +35,24 @@ def publish_slug(slug):
             else:
                 if kind == "Reel":
                     print("video content-type:", instagram.content_type(url))
-                fn(url, caption)
+                for attempt in range(3):   # Instagram sometimes fails to fetch a fresh file; a failed try posts nothing
+                    try:
+                        fn(url, caption)
+                        break
+                    except Exception as e:  # noqa
+                        if attempt == 2 or "could not process" not in str(e):
+                            raise
+                        print("Instagram could not process the file, trying again in 45 s:", _scrub(e))
+                        time.sleep(45)
             ok.append(kind)
         except Exception as e:  # noqa
-            problems.append(f"{kind}: {e}")
-            continue
-        if facebook.enabled() and not C.DRY_RUN:   # Facebook trouble never blocks Instagram
+            problems.append(f"{kind}: {_scrub(e)}")
+        if facebook.enabled() and not C.DRY_RUN:   # Facebook works on its own: trouble on either side never blocks the other
             try:
                 fb_fn[kind](url, caption)
                 fb_notes.append(f"Facebook {kind} ✅")
             except Exception as e:  # noqa
-                fb_notes.append(f"Facebook {kind} ❌ {str(e)[:300]}")
+                fb_notes.append(f"Facebook {kind} ❌ {_scrub(e)[:300]}")
     if not ok:
         m["status"] = "failed"
         ghub.save(slug, m)
