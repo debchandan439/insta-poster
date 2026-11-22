@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 import traceback
-from . import adimage, billboard, poster, captioner, config as C, ghub, reelmaker, videoprep
+from . import adimage, billboard, headlines, poster, captioner, config as C, ghub, reelmaker, videoprep
 
 
 def _slug(name):
@@ -45,8 +45,8 @@ def _prepare_video(video):
 
 
 def prepare_all():
-    photos = [p for p in sorted(C.INCOMING.glob("*")) if p.suffix.lower() in C.IMAGE_EXTS]
-    videos = [p for p in sorted(C.INCOMING.glob("*")) if p.suffix.lower() in C.VIDEO_EXTS]
+    photos = [p for p in sorted(C.INCOMING.rglob("*")) if p.suffix.lower() in C.IMAGE_EXTS]
+    videos = [p for p in sorted(C.INCOMING.rglob("*")) if p.suffix.lower() in C.VIDEO_EXTS]
     if not photos and not videos:
         print("incoming/ is empty, nothing to prepare")
         return
@@ -61,7 +61,12 @@ def prepare_all():
             slug = _slug(photo.name)
             d = C.QUEUE / slug
             d.mkdir(parents=True)
-            category, title, caption, note = captioner.generate(photo)
+            product = headlines.product_from_path(photo)
+            category, title, caption, note = captioner.generate(photo, product)
+            product = product or captioner.LAST.get("product") or None
+            mine = headlines.choose(category, photo, product)   # your own lines win over the AI's
+            if mine:
+                captioner.LAST.update(mine)
             show_title = title if category in ("diya", "dhunuchi", "other") else ""
             if C.AD_STYLE == "billboard":
                 ph, band, full = billboard.build(photo, captioner.LAST.get("headline", ""), captioner.LAST.get("subline", ""))
@@ -75,7 +80,7 @@ def prepare_all():
             (d / "caption.txt").write_text(caption, encoding="utf-8")
             ghub.save(slug, {"slug": slug, "status": "pending", "issue": 0, "category": category,
                              "title": title, "note": note, "caption": caption,
-                             "headline": captioner.LAST.get("headline", "")})
+                             "headline": captioner.LAST.get("headline", ""), "product": product or ""})
             created.append(slug)
             print("prepared", slug, category)
         except Exception:

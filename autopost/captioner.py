@@ -4,6 +4,7 @@ import datetime
 import io
 import json
 import os
+import random
 import re
 import urllib.error
 import urllib.request
@@ -18,7 +19,9 @@ Look at the product photo and answer ONLY with JSON:
 headline: ONE witty poster line in Hinglish (Hindi written in English letters), 3-7 words, like Indian brand
   billboards (Blinkit, Swiggy, Zomato): everyday language, wordplay, rhyme or a cheeky twist that fits the product
   and the season. Original, not a copy of any brand's line. No price, discount, offer or delivery promise.
-  Examples of the style only: "Roshni wahi, jo haath se bani." / "Dhak bajao, dhunuchi jalao."
+  Style examples only (never reuse them): "Roshni wahi, jo haath se bani." / "Safai ho gayi? Ab roshni ki baari." /
+  "Kanha ji ke kapde, kanha ji ke nakhre." / "Aarti ka asli mazaa, dhunuchi ke saath."
+  Every poster must feel different: vary the sentence shape, mood and opening word.
 subline: 4-8 words in simple English or Hinglish saying what the product is, e.g. "Handmade mitti diye for your puja".
 
 category: one of dress, diya, dhunuchi, other.
@@ -60,14 +63,14 @@ not blurred, not mid-transition). Answer ONLY with JSON: {{"category": "...", "t
 """
 
 
-def _ask(model, key, b64s, video=False):
-    prompt = PROMPT.format(brand=C.BRAND, today=datetime.date.today().isoformat())
+def _ask(model, key, b64s, video=False, extra=""):
+    prompt = PROMPT.format(brand=C.BRAND, today=datetime.date.today().isoformat()) + extra
     if video:
         prompt += VIDEO_NOTE.format(n=len(b64s), last=len(b64s) - 1)
     parts = [{"text": prompt}] + [{"inline_data": {"mime_type": "image/jpeg", "data": b}} for b in b64s]
     body = {
         "contents": [{"parts": parts}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.7},
+        "generationConfig": {"responseMimeType": "application/json", "temperature": 1.0},
     }
     req = urllib.request.Request(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
@@ -80,11 +83,39 @@ def _ask(model, key, b64s, video=False):
 
 
 HEADLINES = {
-    "dress": ("Kanha ji ka look, ekdum perfect.", "Handmade poshak for Laddu Gopal"),
-    "diya": ("Roshni wahi, jo haath se bani.", "Handmade mitti diye for your puja"),
-    "dhunuchi": ("Dhak bajao, dhunuchi jalao.", "Handmade mitti dhunuchi for your aarti"),
-    "other": ("Pooja ki taiyari, haath se bani.", "Handmade with love by BhaktiBox"),
+    "dress": [("Kanha ji ka look, ekdum perfect.", "Handmade poshak for Laddu Gopal"),
+              ("Kanha ji ke kapde, kanha ji ke nakhre.", "Handmade Laddu Gopal dress"),
+              ("Aaj Kanha ji kya pehnenge?", "Handmade poshak, every piece unique"),
+              ("Chhote Thakur, bade shaunk.", "Handmade dress for Laddu Gopal")],
+    "diya": [("Roshni wahi, jo haath se bani.", "Handmade mitti diye for your puja"),
+             ("Diya jalao, dil bhi roshan karo.", "Handmade clay diyas"),
+             ("Safai ho gayi? Ab roshni ki baari.", "Handmade mitti diye for your home"),
+             ("Har diye mein kumhaar ki mehnat.", "Handmade clay diyas by BhaktiBox")],
+    "dhunuchi": [("Dhak bajao, dhunuchi jalao.", "Handmade mitti dhunuchi for your aarti"),
+                 ("Aarti ka asli mazaa, dhunuchi ke saath.", "Handmade clay dhunuchi"),
+                 ("Dhuan uthe, bhakti jage.", "Handmade mitti dhunuchi")],
+    "other": [("Pooja ki taiyari, haath se bani.", "Handmade with love by BhaktiBox"),
+              ("Mandir ki shaan, haath ki kaarigari.", "Handmade puja items"),
+              ("Bhakti mein sajaavat, sajaavat mein bhakti.", "Handmade by BhaktiBox")],
 }
+ANGLES = [
+    "a twist on a well-known Hindi saying or idiom",
+    "a rhyme or a two-part line with a punch at the end",
+    "a funny relatable everyday moment (cleaning, guests coming, mom's orders)",
+    "a cheeky question to the viewer",
+    "a proud line about the craft and the potter's hands",
+    "a playful 'pehle ... phir ...' style line",
+    "a warm festive or seasonal line (only if it truly fits this time of year)",
+]
+
+
+def _recent_headlines(n=12):
+    try:
+        from . import ghub
+        hs = [i.get("headline", "") for i in ghub.all_items() if i.get("headline")]
+        return hs[-n:]
+    except Exception:  # noqa
+        return []
 LAST = {}   # headline/subline of the most recent generate() call
 
 
@@ -93,31 +124,46 @@ def clean(caption):
     return re.sub(r"\n{3,}", "\n\n", caption)[:2100]
 
 
-def generate(image_path):
+def generate(image_path, product=None):
     """Returns (category, title, caption, note). note explains any fallback."""
-    cat, title, cap, note, _ = generate_frames([image_path], video=False)
+    cat, title, cap, note, _ = generate_frames([image_path], video=False, product=product)
     return cat, title, cap, note
 
 
-def generate_frames(paths, video=True):
+def generate_frames(paths, video=True, product=None):
     """Returns (category, title, caption, note, best_frame or None)."""
     LAST.clear()
     key = os.environ.get("GEMINI_API_KEY", "")
     if not key:
         t = FALLBACK["other"]
-        LAST.update(headline=HEADLINES["other"][0], subline=HEADLINES["other"][1])
+        LAST.update(zip(("headline", "subline"), random.choice(HEADLINES["other"])))
         return "other", t[0], t[1], "GEMINI_API_KEY secret missing, so a plain template caption was used.", None
     models = ([os.environ["GEMINI_MODEL"]] if os.environ.get("GEMINI_MODEL") else []) + C.GEMINI_MODELS
     b64s, errors = [_jpeg_b64(p) for p in paths], []
+    recent = _recent_headlines()
+    from . import headlines as H
+    if product:
+        extra_p = f"\nThe product in this photo is exactly: {product}. Write about this product.\n"
+    else:
+        extra_p = ("\nAlso add the JSON field \"product\": the best match from this list: "
+                   + ", ".join(H.products()) + ", or \"other\".\n")
+    extra = extra_p + f"\nFor the headline use this style this time: {random.choice(ANGLES)}.\n"
+    if recent:
+        extra += "Earlier headlines, so do NOT repeat or closely resemble them: " + " | ".join(recent) + "\n"
     for m in models:
         try:
-            out = _ask(m, key, b64s, video)
+            out = _ask(m, key, b64s, video, extra)
             cat = out.get("category", "other")
             cat = cat if cat in FALLBACK else "other"
             cap = clean(out["caption"])
             if f"#{C.BRAND}".lower() not in cap.lower():
                 cap += f"\n\n#{C.BRAND}"
-            hd = HEADLINES[cat]
+            hd = random.choice(HEADLINES[cat])
+            LAST["product"] = product or H.canon(out.get("product")) or ""
+            if product:
+                cat = H.category_of(product)
+            elif LAST["product"]:
+                cat = H.category_of(LAST["product"])
             LAST["headline"] = (str(out.get("headline") or "").strip()[:60]) or hd[0]
             LAST["subline"] = (str(out.get("subline") or "").strip()[:60]) or hd[1]
             best = out.get("best_frame")
@@ -128,5 +174,5 @@ def generate_frames(paths, video=True):
         except Exception as e:  # noqa
             errors.append(f"{m}: {type(e).__name__}")
     t = FALLBACK["other"]
-    LAST.update(headline=HEADLINES["other"][0], subline=HEADLINES["other"][1])
+    LAST.update(zip(("headline", "subline"), random.choice(HEADLINES["other"])))
     return "other", t[0], t[1], "AI caption failed (" + "; ".join(errors) + "), so a plain template caption was used. Please edit it.", None
