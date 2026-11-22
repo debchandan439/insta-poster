@@ -36,7 +36,7 @@ def handle():
         ghub.save(slug, meta)
         ghub.commit_and_push(f"Approved {slug}")
         ghub.comment(number, "👍 অনুমোদিত। পরের সকাল ৯:৩০-এ পোস্ট হবে। (এখনই চাইলে `post now` লিখুন)")
-    elif first in ("post now", "now"):
+    elif first in ("post now", "now", "retry"):
         meta["status"] = "approved"
         ghub.save(slug, meta)
         publish.publish_slug(slug)
